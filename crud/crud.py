@@ -1,25 +1,127 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.inspection import inspect
 from fastapi import HTTPException
 from models import models
 from schemas import schemas
+import uuid
 
 def get_shipment(db: Session, referenceId: str):
-    return db.query(models.Shipment).filter(models.Shipment.referenceId == referenceId).first()
+    db_shipment = db.query(models.Shipment).filter(models.Shipment.referenceId == referenceId).first()
+    shipment = None
+    
+    if db_shipment:
+        org_codes = []
+        for org in db_shipment.organizations:
+            org_codes.append(org.code)
+        
+        eta = None
+        if db_shipment.estimatedTimeArrival:
+            eta = db_shipment.estimatedTimeArrival
+        
+        nodes = []
+        if db_shipment.node_id:
+            db_nodes = db.query(models.Node).filter(models.Node.id == db_shipment.node_id)
+            
+            for db_node in db_nodes:
+                total_weight = schemas.totalWeight(
+                    weight=db_node.weight,
+                    unit=db_node.original_unit)
+
+                # add more node here in the future        
+                node = schemas.Node(totalWeight=total_weight)
+                nodes.append(node)
+            
+        transportPack = schemas.TransportPacks(nodes=nodes)
+        
+        shipment = schemas.Shipment(
+            referenceId=db_shipment.referenceId,
+            organizations=org_codes,
+            estimatedTimeArrival=eta,
+            transportPacks=transportPack,
+        )
+
+    return shipment
+
 
 def get_organization(db: Session, id: str):
-    return db.query(models.Organization).filter(models.Organization.id == id).first()
+    db_org = db.query(models.Organization).filter(models.Organization.id == str(id)).first()
+    org = None
+    if db_org:
+        org = schemas.Organization(
+            id=uuid.UUID(db_org.id),
+            code=db_org.code
+        )
+    return org
+
 
 def get_organization_by_code(db: Session, code: str):
     return db.query(models.Organization).filter(models.Organization.code == code).first()
 
 def get_shipments(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Shipment).offset(skip).limit(limit).all()
+    db_shipments = db.query(models.Shipment).offset(skip).limit(limit).all()
+    shipments = []
+
+    for db_shipment in db_shipments:
+        org_codes = []
+        for org in db_shipment.organizations:
+            org_codes.append(org.code)
+        
+        eta = None
+        if db_shipment.estimatedTimeArrival:
+            eta = db_shipment.estimatedTimeArrival
+        
+        nodes = []
+        if db_shipment.node_id:
+            db_node = db.query(models.Node).filter(models.Node.id == db_shipment.node_id).first()
+            
+            total_weight = schemas.totalWeight(
+                weight=db_node.weight,
+                unit=db_node.original_unit)
+
+            # add more node here in the future        
+            node = schemas.Node(totalWeight=total_weight)
+            nodes.append(node)
+            
+        transportPack = schemas.TransportPacks(nodes=nodes)
+        
+        shipment = schemas.Shipment(
+            referenceId=db_shipment.referenceId,
+            organizations=org_codes,
+            estimatedTimeArrival=eta,
+            transportPacks=transportPack,
+        )
+
+        shipments.append(shipment)
+    return shipments
+
 
 def get_organizations(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Organization).offset(skip).limit(limit).all()
+    db_orgs = db.query(models.Organization).offset(skip).limit(limit).all()
+    orgs = []
+    for db_org in db_orgs:
+        print(db_org.id)
+        org = schemas.Organization(
+            id=uuid.UUID(db_org.id),
+            code=db_org.code
+        )
+        orgs.append(org)
+    return orgs
 
 def get_nodes(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Node).offset(skip).limit(limit).all()
+    db_nodes = db.query(models.Node).offset(skip).limit(limit).all()
+
+    nodes = []
+    for db_node in db_nodes:
+            
+        total_weight = schemas.totalWeight(
+            weight=db_node.weight,
+            unit=db_node.original_unit)
+
+        # add more node here in the future        
+        node = schemas.Node(totalWeight=total_weight)
+        nodes.append(node)
+    return nodes
+
 
 def _commit(db: Session, obj):
     db.add(obj)
@@ -33,7 +135,7 @@ def create_shipment(db: Session, shipment: schemas.Shipment):
             if 'nodes' in pack:
                 for node in pack[1]:
                     if type(node) is schemas.Node:
-                        create_shipment_node(db, node, shipment.referenceId)
+                        _create_shipment_node(db, node, shipment.referenceId)
                         current = db.query(models.Node).filter(models.Node.owner_id == shipment.referenceId).first()
 
     org_code_relations = []
@@ -53,11 +155,12 @@ def create_shipment(db: Session, shipment: schemas.Shipment):
     return shipment
 
 def create_organization(db: Session, organization: schemas.Organization):
-    db_organization = models.Organization(id=organization.id, code=organization.code)
+    db_organization = models.Organization(id=str(organization.id), code=organization.code)
     _commit(db, db_organization)
     return db_organization
 
-def create_shipment_node(db: Session, node: schemas.Node, referenceId: str):
+# TODO: link with shipment, add to existing shipment
+def _create_shipment_node(db: Session, node: schemas.Node, referenceId: str):
     total_weight = node.totalWeight
     if total_weight.unit == "OUNCES":
         converted = total_weight.weight * 0.0283495

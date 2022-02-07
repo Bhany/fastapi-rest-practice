@@ -1,9 +1,11 @@
 from pydantic import BaseModel
 from typing import Optional, List
+import uuid 
 import datetime as dt
 
+
 class Organization(BaseModel):
-    id: str
+    id: uuid.UUID
     code: str
     class Config:
         orm_mode = True

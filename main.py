@@ -24,8 +24,6 @@ def get_db():
 
 @app.post("/shipment/", response_model=schemas.Shipment)
 def create_shipment(shipment: schemas.ShipmentCreate, db: Session = Depends(get_db)):
-    print(shipment)
-
     db_shipment = crud.get_shipment(db, referenceId=shipment.referenceId)
     if db_shipment:
         raise HTTPException(status_code=400, detail="Shipment already exists")
@@ -55,20 +53,30 @@ def read_shipment(ref_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Shipment not found")
     return db_shipment
 
-@app.get("/organizations/{id}", response_model=schemas.Organization)
+@app.get("/organizations/id/{id}", response_model=schemas.Organization)
 def read_organization(id: str, db: Session = Depends(get_db)):
     db_organization = crud.get_organization(db, id=id)
     if db_organization is None:
         raise HTTPException(status_code=404, detail="Organization not found")
     return db_organization
 
-@app.post("/shipments/{ref_id}/nodes/", response_model=schemas.Node)
-def create_node_for_shipment(
-    ref_id: str, node: schemas.NodeCreate, db: Session = Depends(get_db)
-):
-    return crud.create_shipment_node(db=db, node=node, referenceId=ref_id)
+@app.get("/organizations/code/{code}", response_model=schemas.Organization)
+def read_organization_by_code(code: str, db: Session = Depends(get_db)):
+    db_organization = crud.get_organization_by_code(db, code=code)
+    if db_organization is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return db_organization
+
 
 @app.get("/nodes/", response_model=List[schemas.Node])
 def read_nodes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     nodes = crud.get_nodes(db, skip=skip, limit=limit)
     return nodes
+
+"""
+@app.post("/shipments/{ref_id}/nodes/", response_model=schemas.Node)
+def create_node_for_shipment(
+    ref_id: str, node: schemas.NodeCreate, db: Session = Depends(get_db)
+):
+    return crud.create_shipment_node(db=db, node=node, referenceId=ref_id)
+"""
