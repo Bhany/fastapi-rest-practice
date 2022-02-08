@@ -1,10 +1,16 @@
+from enum import Enum
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Union
 import uuid 
 import datetime as dt
 
+class WeightUnit(str, Enum):
+    kg = "KILOGRAMS"
+    lb = "POUNDS"
+    oz = "OUNCES"
 
 class Organization(BaseModel):
+    type: str
     id: uuid.UUID
     code: str
     class Config:
@@ -13,12 +19,12 @@ class Organization(BaseModel):
 class OrganizationCreate(Organization):
     pass
 
-class totalWeight(BaseModel):
+class TotalWeight(BaseModel):
     weight: float # type check
     unit: str
 
 class Node(BaseModel):
-    totalWeight: totalWeight
+    totalWeight: TotalWeight
     class Config:
         orm_mode = True
 
@@ -31,6 +37,7 @@ class TransportPacks(BaseModel):
         orm_mode = True
 
 class Shipment(BaseModel):
+    type: str
     referenceId: str
     organizations: List[str]
     estimatedTimeArrival: Optional[dt.datetime]
@@ -40,3 +47,8 @@ class Shipment(BaseModel):
 
 class ShipmentCreate(Shipment):
     pass
+
+class NodeAggregate(BaseModel):
+    count: int
+    weight: float
+    unit: str

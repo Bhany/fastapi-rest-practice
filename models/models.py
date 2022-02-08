@@ -33,6 +33,7 @@ class Node(Base):
     weight = Column(Float, index=True)
     original_unit = Column(String, index=True)
     kg = Column(Float, index=True)
+    oz = Column(Float, index=True)
     lb = Column(Float, index=True)
     owner_id = Column(String, ForeignKey("shipment.referenceId"))
     #shipment = relationship("Shipment", back_populates="transportPacks")

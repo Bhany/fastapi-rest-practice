@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List, Union
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
@@ -13,7 +13,6 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -24,10 +23,20 @@ def get_db():
 
 @app.post("/shipment/", response_model=schemas.Shipment)
 def create_shipment(shipment: schemas.ShipmentCreate, db: Session = Depends(get_db)):
+    print("yes, hi")
     db_shipment = crud.get_shipment(db, referenceId=shipment.referenceId)
     if db_shipment:
         raise HTTPException(status_code=400, detail="Shipment already exists")
     return crud.create_shipment(db=db, shipment=shipment)
+
+@app.post("/message/", response_model=Union[schemas.Shipment, schemas.Organization]) #find better ways
+def receive_message(message: Union[schemas.Shipment, schemas.Organization], db: Session = Depends(get_db)):
+    message_type = type(message)
+    if message_type == schemas.Organization:
+        create_organization(message, db)
+    elif message_type == schemas.Shipment:
+        create_shipment(message, db)
+    return message
 
 @app.post("/organization/", response_model=schemas.Organization)
 def create_organization(organization: schemas.OrganizationCreate, db: Session = Depends(get_db)):
@@ -52,6 +61,13 @@ def read_shipment(ref_id: str, db: Session = Depends(get_db)):
     if db_shipment is None:
         raise HTTPException(status_code=404, detail="Shipment not found")
     return db_shipment
+
+@app.get("/shipments/aggregate/{unit}/", response_model=schemas.NodeAggregate)
+def aggregate_node_weights(unit: str, db: Session = Depends(get_db)):
+    agg_node = crud.aggregate_node_weights(db, unit)
+    if agg_node is None:
+        raise HTTPException(status_code=404, detail="Nodes are not found")
+    return agg_node
 
 @app.get("/organizations/id/{id}", response_model=schemas.Organization)
 def read_organization(id: str, db: Session = Depends(get_db)):

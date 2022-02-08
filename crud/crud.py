@@ -1,8 +1,10 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.inspection import inspect
 from fastapi import HTTPException
 from models import models
 from schemas import schemas
+from sqlalchemy.inspection import inspect
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
+
 import uuid
 
 def get_shipment(db: Session, referenceId: str):
@@ -23,7 +25,7 @@ def get_shipment(db: Session, referenceId: str):
             db_nodes = db.query(models.Node).filter(models.Node.id == db_shipment.node_id)
             
             for db_node in db_nodes:
-                total_weight = schemas.totalWeight(
+                total_weight = schemas.TotalWeight(
                     weight=db_node.weight,
                     unit=db_node.original_unit)
 
@@ -34,6 +36,7 @@ def get_shipment(db: Session, referenceId: str):
         transportPack = schemas.TransportPacks(nodes=nodes)
         
         shipment = schemas.Shipment(
+            type="SHIPMENT",
             referenceId=db_shipment.referenceId,
             organizations=org_codes,
             estimatedTimeArrival=eta,
@@ -48,6 +51,7 @@ def get_organization(db: Session, id: str):
     org = None
     if db_org:
         org = schemas.Organization(
+            type="ORGANIZATION",
             id=uuid.UUID(db_org.id),
             code=db_org.code
         )
@@ -55,7 +59,13 @@ def get_organization(db: Session, id: str):
 
 
 def get_organization_by_code(db: Session, code: str):
-    return db.query(models.Organization).filter(models.Organization.code == code).first()
+    db_organization = db.query(models.Organization).filter(models.Organization.code == code).first()
+    org = schemas.Organization(
+            type="ORGANIZATION",
+            id=uuid.UUID(db_organization.id),
+            code=db_organization.code
+        )
+    return org
 
 def get_shipments(db: Session, skip: int = 0, limit: int = 100):
     db_shipments = db.query(models.Shipment).offset(skip).limit(limit).all()
@@ -74,7 +84,7 @@ def get_shipments(db: Session, skip: int = 0, limit: int = 100):
         if db_shipment.node_id:
             db_node = db.query(models.Node).filter(models.Node.id == db_shipment.node_id).first()
             
-            total_weight = schemas.totalWeight(
+            total_weight = schemas.TotalWeight(
                 weight=db_node.weight,
                 unit=db_node.original_unit)
 
@@ -85,6 +95,7 @@ def get_shipments(db: Session, skip: int = 0, limit: int = 100):
         transportPack = schemas.TransportPacks(nodes=nodes)
         
         shipment = schemas.Shipment(
+            type="SHIPMENT",
             referenceId=db_shipment.referenceId,
             organizations=org_codes,
             estimatedTimeArrival=eta,
@@ -99,8 +110,8 @@ def get_organizations(db: Session, skip: int = 0, limit: int = 100):
     db_orgs = db.query(models.Organization).offset(skip).limit(limit).all()
     orgs = []
     for db_org in db_orgs:
-        print(db_org.id)
         org = schemas.Organization(
+            type="ORGANIZATION",
             id=uuid.UUID(db_org.id),
             code=db_org.code
         )
@@ -113,7 +124,7 @@ def get_nodes(db: Session, skip: int = 0, limit: int = 100):
     nodes = []
     for db_node in db_nodes:
             
-        total_weight = schemas.totalWeight(
+        total_weight = schemas.TotalWeight(
             weight=db_node.weight,
             unit=db_node.original_unit)
 
@@ -137,6 +148,8 @@ def create_shipment(db: Session, shipment: schemas.Shipment):
                     if type(node) is schemas.Node:
                         _create_shipment_node(db, node, shipment.referenceId)
                         current = db.query(models.Node).filter(models.Node.owner_id == shipment.referenceId).first()
+                        current = current.id
+
 
     org_code_relations = []
     if shipment.organizations:
@@ -149,7 +162,7 @@ def create_shipment(db: Session, shipment: schemas.Shipment):
         referenceId = shipment.referenceId, 
         organizations = org_code_relations, 
         estimatedTimeArrival = shipment.estimatedTimeArrival,# if shipment.estimatedTimeArrival else None, 
-        node_id = current.id)
+        node_id = current)
 
     _commit(db, db_shipment)
     return shipment
@@ -157,26 +170,49 @@ def create_shipment(db: Session, shipment: schemas.Shipment):
 def create_organization(db: Session, organization: schemas.Organization):
     db_organization = models.Organization(id=str(organization.id), code=organization.code)
     _commit(db, db_organization)
-    return db_organization
+    return organization
 
 # TODO: link with shipment, add to existing shipment
 def _create_shipment_node(db: Session, node: schemas.Node, referenceId: str):
     total_weight = node.totalWeight
     if total_weight.unit == "OUNCES":
-        converted = total_weight.weight * 0.0283495
-        metric = False
+        kilograms = total_weight.weight * 0.0283495
+        pounds =  total_weight.weight * 0.0625
+        ounces = total_weight.weight
     elif total_weight.unit == "KILOGRAMS":
-        converted = total_weight.weight * 35.274
-        metric = True
+        kilograms = total_weight.weight
+        pounds = total_weight.weight * 2.20462
+        ounces = total_weight.weight * 35.274
+    elif total_weight.unit == "POUNDS":
+        kilograms = total_weight.weight * 0.453592
+        pounds = total_weight.weight 
+        ounces = total_weight.weight * 16
     else: 
         raise HTTPException(status_code=400, detail="Invalid weight unit: {}".format(total_weight.unit))
 
     db_node = models.Node(
         weight = total_weight.weight,
         original_unit = total_weight.unit,
-        kg = total_weight.weight if metric else converted,
-        lb = total_weight.weight if not metric else converted,
+        kg = kilograms,
+        oz = ounces,
+        lb = pounds,
         owner_id = referenceId
     )
     _commit(db, db_node)
     return node
+
+def aggregate_node_weights(db: Session, unit=str):
+    w = schemas.WeightUnit
+    if unit != w.oz and unit != w.kg and unit != w.lb: 
+        raise HTTPException(status_code=400, detail="Invalid weight unit: {}; allowed input: 'OUNCES', KILOGRAMS, and 'POUNDS'".format(unit))
+    if unit == w.oz: model = models.Node.oz
+    elif unit == w.kg: model = models.Node.kg
+    elif unit == w.lb: model = models.Node.lb
+
+    result = db.query(func.sum(model), func.count(model)).first()
+    
+    if result:
+        weight = result[0]
+        count = result[1]
+
+    return schemas.NodeAggregate(count=count, weight=weight, unit=unit)
