@@ -63,7 +63,7 @@ def get_shipments(db: Session, skip: int = 0, limit: int = 100):
         
         nodes = []
         if db_shipment.node_id:
-            db_node = db.query(model_ship).filter(model_ship.id == db_shipment.node_id).first()
+            db_node = db.query(model_node).filter(model_node.id == db_shipment.node_id).first()
             
             total_weight = schema_node.TotalWeight(
                 weight=db_node.weight,

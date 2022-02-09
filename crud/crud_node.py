@@ -39,10 +39,11 @@ def create_shipment_node(db: Session, node: schema_node.Node, referenceId: str):
     _commit(db, db_node)
     return node
 
+
 def aggregate_node_weights(db: Session, unit=str):
     w = WeightUnit
     if unit != w.oz and unit != w.kg and unit != w.lb: 
-        raise HTTPException(status_code=400, detail="Invalid weight unit: {}; allowed input: 'OUNCES', KILOGRAMS, and 'POUNDS'".format(unit))
+        raise HTTPException(status_code=400, detail="Invalid weight unit: {}; allowed input: 'OUNCES', 'KILOGRAMS', and 'POUNDS'".format(unit))
     if unit == w.oz: model = model_node.oz
     elif unit == w.kg: model = model_node.kg
     elif unit == w.lb: model = model_node.lb

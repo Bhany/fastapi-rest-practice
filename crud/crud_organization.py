@@ -8,7 +8,7 @@ import uuid
 
 def create_organization(db: Session, organization: schema_org):
     exist = get_organization(db, str(organization.id))
-    if exist: 
+    if exist:
         update_organization(db, organization)
         return organization
     db_organization = model_org(id=str(organization.id), code=organization.code)

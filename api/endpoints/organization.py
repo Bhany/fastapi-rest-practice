@@ -10,9 +10,6 @@ router = APIRouter()
 
 @router.post("/organization/", status_code=201, response_model=schema_org)
 def create_organization(organization: schema_org, db: Session = Depends(get_db)):
-    db_organization = crud_org.get_organization(db, id=organization.id)
-    if db_organization:
-        raise HTTPException(status_code=400, detail="Organization already exists")
     return crud_org.create_organization(db=db, organization=organization)
 
 @router.get("/organizations/", status_code=200, response_model=List[schema_org])
@@ -24,13 +21,13 @@ def read_organizations(skip: int = 0, limit: int = 100, db: Session = Depends(ge
 @router.get("/organizations/id/{id}", status_code=200, response_model=schema_org)
 def read_organization(id: str, db: Session = Depends(get_db)):
     db_organization = crud_org.get_organization(db, id=id)
-    if db_organization is None:
+    if not db_organization:
         raise HTTPException(status_code=404, detail="Organization not found")
     return db_organization
 
 @router.get("/organizations/code/{code}", status_code=200, response_model=schema_org)
 def read_organization_by_code(code: str, db: Session = Depends(get_db)):
     db_organization = crud_org.get_organization_by_code(db, code=code)
-    if db_organization is None:
+    if not db_organization:
         raise HTTPException(status_code=404, detail="Organization not found")
     return db_organization
