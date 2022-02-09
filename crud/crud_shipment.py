@@ -1,10 +1,11 @@
+from sqlalchemy import schema
 from fastapi import HTTPException
 from models.shipment import Shipment as model_ship
 from models.organization import Organization as model_org
 from models.node import Node as model_node
 from schemas import shipment as schema_ship
 from schemas import node as schema_node
-
+from .crud_node import create_shipment_node, update_node
 from sqlalchemy.orm import Session
 
 
@@ -86,22 +87,22 @@ def get_shipments(db: Session, skip: int = 0, limit: int = 100):
     return shipments
 
 
-def _commit(db: Session, obj):
-    db.add(obj)
-    db.commit()
-    db.refresh(obj)
-
 def create_shipment(db: Session, shipment: schema_ship.Shipment):
-    current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-    if not current:
-        for pack in shipment.transportPacks:
-            if 'nodes' in pack:
-                for node in pack[1]:
-                    if type(node) is schema_node.Node:
-                        _create_shipment_node(db, node, shipment.referenceId)
-                        current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-                        current = current.id
+    exist = db.query(model_ship).filter(model_ship.referenceId == shipment.referenceId).first()
+    if exist: update_shipment(db, shipment)
 
+    db_node = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
+    current = None
+    for pack in shipment.transportPacks:
+        if 'nodes' in pack:
+            for node in pack[1]:
+                if type(node) is schema_node.Node:
+                    if db_node:
+                        update_node(db, node, shipment.referenceId)
+                    else:
+                        create_shipment_node(db, node, shipment.referenceId)
+                    current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
+                    current = current.id
 
     org_code_relations = []
     if shipment.organizations:
@@ -119,31 +120,52 @@ def create_shipment(db: Session, shipment: schema_ship.Shipment):
     _commit(db, db_shipment)
     return shipment
 
-# TODO: link with shipment, add to existing shipment
-def _create_shipment_node(db: Session, node: schema_node.Node, referenceId: str):
-    total_weight = node.totalWeight
-    if total_weight.unit == "OUNCES":
-        kilograms = total_weight.weight * 0.0283495
-        pounds =  total_weight.weight * 0.0625
-        ounces = total_weight.weight
-    elif total_weight.unit == "KILOGRAMS":
-        kilograms = total_weight.weight
-        pounds = total_weight.weight * 2.20462
-        ounces = total_weight.weight * 35.274
-    elif total_weight.unit == "POUNDS":
-        kilograms = total_weight.weight * 0.453592
-        pounds = total_weight.weight 
-        ounces = total_weight.weight * 16
-    else: 
-        raise HTTPException(status_code=400, detail="Invalid weight unit: {}".format(total_weight.unit))
 
-    db_node = model_node(
-        weight = total_weight.weight,
-        original_unit = total_weight.unit,
-        kg = kilograms,
-        oz = ounces,
-        lb = pounds,
-        owner_id = referenceId
-    )
-    _commit(db, db_node)
-    return node
+def remove(self, db: Session, shipment: schema_ship.Shipment):
+    obj = db.query(model_ship).get(shipment.referenceId)
+    db.delete(obj)
+    db.commit()
+
+    obj = db.query(model_node).get(model_node.owner_id == shipment.referenceId)
+    if obj:
+        db.delete(obj)
+        db.commit()
+    return shipment
+
+
+def update_shipment(db: Session, shipment: schema_ship.Shipment):
+    db_shipment = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
+    if not db_shipment:
+        raise HTTPException(status_code=400, detail="Cannot update shipment: {} is not in the database".format(shipment.referenceId))
+
+    db_node = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
+    for pack in shipment.transportPacks:
+        if 'nodes' in pack:
+            for node in pack[1]:
+                if type(node) is schema_node.Node:
+                    if db_node:
+                        update_node(db, node, shipment.referenceId)
+                    else:
+                        create_shipment_node(db, node, shipment.referenceId)
+                    current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
+                    current = current.id
+
+    org_code_relations = []
+    if shipment.organizations:
+        for org_code in shipment.organizations:
+            query_result = db.query(model_org).filter(model_org.code == org_code).first()
+            if query_result: org_code_relations.append(query_result)
+            else: raise HTTPException(status_code=400, detail="Invalid organization code, organization code: {} is not in the database".format(org_code))
+        
+    db_shipment.referenceId = shipment.referenceId
+    db_shipment.organizations = org_code_relations
+    db_shipment.estimatedTimeArrival = shipment.estimatedTimeArrival
+    db_shipment.node_id = current
+    db.commit()
+    return shipment
+
+
+def _commit(db: Session, obj):
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)

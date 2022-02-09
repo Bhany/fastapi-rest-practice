@@ -8,7 +8,7 @@ from sqlalchemy.sql import func
 
 
 def get_nodes(db: Session, skip: int = 0, limit: int = 100):
-    db_nodes = db.query(models.Node).offset(skip).limit(limit).all()
+    db_nodes = db.query(model_node).offset(skip).limit(limit).all()
 
     nodes = []
     for db_node in db_nodes:
@@ -23,10 +23,10 @@ def get_nodes(db: Session, skip: int = 0, limit: int = 100):
     return nodes
 
 
-# TODO: link with shipment, add to existing shipment
-def _create_shipment_node(db: Session, node: schema_node.Node, referenceId: str):
+def create_shipment_node(db: Session, node: schema_node.Node, referenceId: str):
     total_weight = node.totalWeight
-    converted = WeightConverter.convert(total_weight.weight, total_weight.unit)
+    c = WeightConverter()
+    converted = c.convert(total_weight.weight, total_weight.unit)
 
     db_node = model_node(
         weight = total_weight.weight,
@@ -56,7 +56,49 @@ def aggregate_node_weights(db: Session, unit=str):
     return schema_node.NodeAggregate(count=count, weight=weight, unit=unit)
 
 
+def remove_node(self, db: Session, node: schema_node):
+    obj = db.query(model_node).get(node.id)
+    db.delete(obj)
+    db.commit()
+    return node
+
+
+def update_node(db: Session, node: schema_node, referenceId: str):
+    db_node = db.query(model_node).filter(model_node.owner_id == referenceId).first()
+    if not db_node:
+        raise HTTPException(status_code=400, detail="Cannot update node: {} is not in the database".format(node.id))
+    total_weight = node.totalWeight
+    c = WeightConverter()
+    converted = c.convert(total_weight.weight, total_weight.unit)
+    
+    db_node.weight = total_weight.weight
+    db_node.original_unit = total_weight.unit
+    db_node.kg = converted['kg']
+    db_node.oz = converted['oz']
+    db_node.lb = converted['lb']
+    db_node.owner_id = referenceId
+    return node
+
+
 def _commit(db: Session, obj):
     db.add(obj)
     db.commit()
     db.refresh(obj)
+
+
+""" TODO: if need for node to be created by itself arises
+def create_node(db: Session, node: schema_node.Node):
+    total_weight = node.totalWeight
+    converted = WeightConverter.convert(total_weight.weight, total_weight.unit)
+
+    db_node = model_node(
+        weight = total_weight.weight,
+        original_unit = total_weight.unit,
+        kg = converted['kg'],
+        oz = converted['oz'],
+        lb = converted['lb'],
+        owner_id = None
+    )
+    _commit(db, db_node)
+    return node
+"""

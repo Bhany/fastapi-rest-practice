@@ -7,12 +7,17 @@ import uuid
 
 
 def create_organization(db: Session, organization: schema_org):
+    exist = get_organization(db, str(organization.id))
+    if exist: 
+        update_organization(db, organization)
+        return organization
     db_organization = model_org(id=str(organization.id), code=organization.code)
     _commit(db, db_organization)
     return organization
 
+
 def get_organization(db: Session, id: str):
-    db_org = db.query(model_org).filter(model_org.id == str(id)).first()
+    db_org = db.query(model_org).filter(model_org.id == id).first()
     org = None
     if db_org:
         org = schema_org(
@@ -44,6 +49,22 @@ def get_organizations(db: Session, skip: int = 0, limit: int = 100):
         )
         orgs.append(org)
     return orgs
+
+
+def remove_organization(db: Session, organization: schema_org):
+    obj = db.query(model_org).get(str(organization.id))
+    db.delete(obj)
+    db.commit()
+    return organization
+
+
+def update_organization(db: Session, organization: schema_org):
+    db_org = db.query(model_org).filter(model_org.id == str(organization.id)).first()
+    if not db_org:
+        raise HTTPException(status_code=400, detail="Cannot update organization: {} is not in the database".format(organization.id))
+    db_org.code = organization.code    
+    db.commit()
+    return organization
 
 
 def _commit(db: Session, obj):

@@ -20,7 +20,7 @@ class WeightConverter:
         if original_unit == "POUNDS":
             return {'kg': weight*self.lb_to_kg, 'lb': weight, 'oz': weight*self.lb_to_oz}
         if original_unit == "KILOGRAMS":
-            return {'kg': weight, 'lb': weight*self.kg_to_lb, 'lb': weight*self.kg_to_oz}
+            return {'kg': weight, 'lb': weight*self.kg_to_lb, 'oz': weight*self.kg_to_oz}
     
 
 
