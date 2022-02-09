@@ -1,7 +1,6 @@
 from fastapi import HTTPException
 from models import models
 from schemas import schemas
-from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 

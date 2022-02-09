@@ -144,10 +144,11 @@ messages = [
 ]
 
 url = 'http://localhost:8000/message'
-ship = 'http://localhost:8000/organization'
 
 for message in messages:
     j = json.dumps(message)
     response = requests.post(url, data=j)
     print(response.text)
+    input()
+
 
