@@ -1,26 +1,46 @@
 from enum import Enum
+from fastapi import HTTPException
+from typing import Final
+
+class MessageType(str, Enum):
+    org = "ORGANIZATION"
+    ship = "SHIPMENT"
+
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_ 
+
 
 class WeightUnit(str, Enum):
     kg = "KILOGRAMS"
     lb = "POUNDS"
     oz = "OUNCES"
 
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_ 
+
+
+class WeightConversion():
+    kg_to_lb: Final[float] = 2.20462
+    kg_to_oz: Final[float] = 35.274
+    lb_to_kg: Final[float] = 0.453592
+    lb_to_oz: Final[float] = 16
+    oz_to_kg: Final[float] = 0.0283495
+    oz_to_lb: Final[float] = 0.0625
+
+
 class WeightConverter:
-    def __init__(self):
-        self.kg_to_lb = 2.20462
-        self.kg_to_oz = 35.274
-        self.lb_to_kg = 0.453592
-        self.lb_to_oz = 16
-        self.oz_to_kg = 0.0283495
-        self.oz_to_lb = 0.0625
+    @staticmethod
+    def convert(weight, unit):
+        if not WeightUnit.has_value(unit): 
+            raise HTTPException(status_code=404, detail="Unit not supported")
+        if weight < 0: 
+            raise HTTPException(status_code=404, detail="Negative weight not supported")
 
-    def convert(self, weight, original_unit):
-        if original_unit == "OUNCES":
-            return {'kg': weight*self.oz_to_kg, 'lb': weight*self.oz_to_lb, 'oz':weight}
-        if original_unit == "POUNDS":
-            return {'kg': weight*self.lb_to_kg, 'lb': weight, 'oz': weight*self.lb_to_oz}
-        if original_unit == "KILOGRAMS":
-            return {'kg': weight, 'lb': weight*self.kg_to_lb, 'oz': weight*self.kg_to_oz}
-    
-
-
+        if unit == WeightUnit.oz:
+            return {'kg': weight*WeightConversion.oz_to_kg, 'lb': weight*WeightConversion.oz_to_lb, 'oz':weight}
+        elif unit == WeightUnit.lb:
+            return {'kg': weight*WeightConversion.lb_to_kg, 'lb': weight, 'oz': weight*WeightConversion.lb_to_oz}
+        elif unit == WeightUnit.kg:
+            return {'kg': weight, 'lb': weight*WeightConversion.kg_to_lb, 'oz': weight*WeightConversion.kg_to_oz}

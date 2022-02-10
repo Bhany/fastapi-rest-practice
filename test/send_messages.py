@@ -19,28 +19,28 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001175",
+    "reference_id": "S00001175",
     "organizations": ["SEA", "BOG", "FMT"],
-    "transportPacks": {
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "0",
             "unit": "KILOGRAMS"
           }
         }
-      ]
+      ],
     }
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001009",
+    "reference_id": "S00001009",
     "organizations": [],
-    "estimatedTimeArrival": "2020-01-17T15:07:00",
-    "transportPacks": {
+    "estimated_time_arrival": "2020-01-17T15:07:00",
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "1000",
             "unit": "OUNCES"
           }
@@ -50,22 +50,22 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001142",
+    "reference_id": "S00001142",
     "organizations": ["FMT"],
-    "estimatedTimeArrival": "2020-08-29T00:00:00",
-    "transportPacks": {
+    "estimated_time_arrival": "2020-08-29T00:00:00",
+    "transport_packs": {
       "nodes": []
     }
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001071",
+    "reference_id": "S00001071",
     "organizations": ["BOG"],
-    "estimatedTimeArrival": "2020-03-13T00:00:00",
-    "transportPacks": {
+    "estimated_time_arrival": "2020-03-13T00:00:00",
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "5",
             "unit": "KILOGRAMS"
           }
@@ -80,13 +80,13 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001167",
+    "reference_id": "S00001167",
     "organizations": ["SEA"],
-    "estimatedTimeArrival": "2020-11-21T00:00:00",
-    "transportPacks": {
+    "estimated_time_arrival": "2020-11-21T00:00:00",
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "22690",
             "unit": "KILOGRAMS"
           }
@@ -96,12 +96,12 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001175",
+    "reference_id": "S00001175",
     "organizations": ["SEA", "NAM"],
-    "transportPacks": {
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "10",
             "unit": "KILOGRAMS"
           }
@@ -111,13 +111,13 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001197",
+    "reference_id": "S00001197",
     "organizations": ["BOG"],
-    "estimatedTimeArrival": None,
-    "transportPacks": {
+    "estimated_time_arrival": None,
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "10",
             "unit": "POUNDS"
           }
@@ -127,13 +127,13 @@ messages = [
   },
   {
     "type": "SHIPMENT",
-    "referenceId": "S00001175",
+    "reference_id": "S00001175",
     "organizations": ["SEA"],
-    "estimatedTimeArrival": "2020-11-20T00:00:00",
-    "transportPacks": {
+    "estimated_time_arrival": "2020-11-20T00:00:00",
+    "transport_packs": {
       "nodes": [
         {
-          "totalWeight": {
+          "total_weight": {
             "weight": "3",
             "unit": "KILOGRAMS"
           }
@@ -143,11 +143,15 @@ messages = [
   },
 ]
 
-url = 'http://localhost:8000/message'
+
+url = 'http://localhost:8000/{}'
 
 for message in messages:
     j = json.dumps(message)
-    response = requests.post(url, data=j)
+    if message['type'] == "SHIPMENT": endpoint = "shipment"
+    else: endpoint = "organization"
+    print("MESSAGE:{}".format(j))
+    response = requests.post(url.format(endpoint), data=j)
     print(response.text)
     input()
 

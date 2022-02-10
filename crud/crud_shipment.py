@@ -1,171 +1,141 @@
-from sqlalchemy import schema
 from fastapi import HTTPException
 from models.shipment import Shipment as model_ship
 from models.organization import Organization as model_org
 from models.node import Node as model_node
-from schemas import shipment as schema_ship
-from schemas import node as schema_node
-from .crud_node import create_shipment_node, update_node
-from sqlalchemy.orm import Session
+from schemas import schemas
+from .crud_node import create_shipment_node
+from sqlalchemy.orm import Session, joinedload
+from utils.generic import MessageType
+from .base import commit
 
 
-def get_shipment(db: Session, referenceId: str):
-    db_shipment = db.query(model_ship).filter(model_ship.referenceId == referenceId).first()
-    shipment = None
+def create_shipment(db: Session, shipment: schemas.ShipmentSchema):
+    """ Create shipment row by mapping schema into model shipment then insert """
+    db_ship = db.query(model_ship).filter(model_ship.reference_id == shipment.reference_id).first()
+    if db_ship: 
+        raise HTTPException(status_code=404, detail="Shipment with reference id:'{}' already exist in the database".format(shipment.reference_id))
+
+    transport_packs = [create_shipment_node(db, node) for node in shipment.transport_packs.nodes]
     
-    if db_shipment:
-        org_codes = []
-        for org in db_shipment.organizations:
-            org_codes.append(org.code)
-        
-        eta = None
-        if db_shipment.estimatedTimeArrival:
-            eta = db_shipment.estimatedTimeArrival
-        
-        nodes = []
-        if db_shipment.node_id:
-            db_nodes = db.query(model_node).filter(model_node.id == db_shipment.node_id)
-            
-            for db_node in db_nodes:
-                total_weight = schema_node.TotalWeight(
-                    weight=db_node.weight,
-                    unit=db_node.original_unit)
+    org_code_relations = []
+    for org_code in shipment.organizations:
+        query_result = db.query(model_org).filter(model_org.code == org_code).first()
+        if query_result: org_code_relations.append(query_result)
+        else: raise HTTPException(status_code=400, detail="Invalid organization code, organization code:'{}' is not in the database".format(org_code))
 
-                # add more node here in the future        
-                node = schema_node.Node(totalWeight=total_weight)
-                nodes.append(node)
-            
-        transportPack = schema_ship.TransportPacks(nodes=nodes)
-        
-        shipment = schema_ship.Shipment(
-            type="SHIPMENT",
-            referenceId=db_shipment.referenceId,
-            organizations=org_codes,
-            estimatedTimeArrival=eta,
-            transportPacks=transportPack,
+    db_shipment = model_ship(
+            reference_id = shipment.reference_id, 
+            organizations = org_code_relations, 
+            estimated_time_arrival = shipment.estimated_time_arrival,
+            transport_packs = transport_packs
         )
+
+    commit(db, db_shipment)
+    return shipment
+
+
+def get_shipment(db: Session, reference_id: str):
+    """ Get shipment row matching reference id return as schema """
+    db_ship = db.query(model_ship).filter(model_ship.reference_id == reference_id).options(joinedload(model_ship.organizations)).first()
+    if not db_ship: raise HTTPException(status_code=404, detail="Shipment does not exist in the database")
+
+    shipment = None
+
+    org_codes = [orgs.code for orgs in db_ship.organizations]        
+
+    eta = db_ship.estimated_time_arrival if db_ship.estimated_time_arrival else None
+    
+    nodes = [
+            schemas.Node(
+                total_weight=schemas.total_weight(
+                    weight=db_node.weight, 
+                    unit=db_node.unit
+                    )
+                )
+            for db_node in db_ship.transport_packs
+        ]
+    transportPack = schemas.TransportPacks(nodes=nodes)
+    
+    shipment = schemas.ShipmentSchema(
+        type=MessageType.ship,
+        reference_id=db_ship.reference_id,
+        organizations=org_codes,
+        estimated_time_arrival=eta,
+        transport_packs=transportPack,
+    )
 
     return shipment
 
 
 def get_shipments(db: Session, skip: int = 0, limit: int = 100):
-    db_shipments = db.query(model_ship).offset(skip).limit(limit).all()
+    """ Get all shipments """
+    db_ships = db.query(model_ship).offset(skip).limit(limit).all()
     shipments = []
 
-    for db_shipment in db_shipments:
-        org_codes = []
-        for org in db_shipment.organizations:
-            org_codes.append(org.code)
-        
-        eta = None
-        if db_shipment.estimatedTimeArrival:
-            eta = db_shipment.estimatedTimeArrival
-        
-        nodes = []
-        if db_shipment.node_id:
-            db_node = db.query(model_node).filter(model_node.id == db_shipment.node_id).first()
-            
-            total_weight = schema_node.TotalWeight(
-                weight=db_node.weight,
-                unit=db_node.original_unit)
+    for db_ship in db_ships:
+        org_codes = [org.code for org in db_ship.organizations]
 
-            # add more node here in the future        
-            node = schema_node.Node(totalWeight=total_weight)
-            nodes.append(node)
-            
-        transportPack = schema_ship.TransportPacks(nodes=nodes)
+        eta = db_ship.estimated_time_arrival if db_ship.estimated_time_arrival else None
         
-        shipment = schema_ship.Shipment(
-            type="SHIPMENT",
-            referenceId=db_shipment.referenceId,
+        nodes = [
+            schemas.Node(
+                total_weight=schemas.total_weight(
+                    weight=db_node.weight, 
+                    unit=db_node.unit
+                    )
+                )
+            for db_node in db_ship.transport_packs
+        ]
+        transportPack = schemas.TransportPacks(nodes=nodes)
+        
+        shipment = schemas.ShipmentSchema(
+            type=MessageType.ship,
+            reference_id=db_ship.reference_id,
             organizations=org_codes,
-            estimatedTimeArrival=eta,
-            transportPacks=transportPack,
+            estimated_time_arrival=eta,
+            transport_packs=transportPack,
         )
 
         shipments.append(shipment)
+
     return shipments
 
 
-def create_shipment(db: Session, shipment: schema_ship.Shipment):
-    exist = db.query(model_ship).filter(model_ship.referenceId == shipment.referenceId).first()
-    if exist: update_shipment(db, shipment)
+def update_shipment(db: Session, shipment: schemas.Shipment):
+    """ Update shipment row if exist """
+    db_ship = db.query(model_node).filter(model_node.shipment_id == shipment.reference_id).first()
+    if not db_ship:
+        raise HTTPException(status_code=404, detail="Cannot update shipment:'{}' is not in the database".format(shipment.reference_id))
 
-    db_node = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-    current = None
-    for pack in shipment.transportPacks:
-        if 'nodes' in pack:
-            for node in pack[1]:
-                if type(node) is schema_node.Node:
-                    if db_node:
-                        update_node(db, node, shipment.referenceId)
-                    else:
-                        create_shipment_node(db, node, shipment.referenceId)
-                    current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-                    current = current.id
-
+    # currently update a single related node; should do so on the node crud
+    """
+    db_node = db.query(model_node).filter(model_node.shipment_id == shipment.reference_id).one()
+    for pack in shipment.transport_packs:
+        for node in pack.nodes:
+            if db_node:
+                update_node(db, node, shipment.reference_id)
+                current = db.query(model_node).filter(model_node.shipment_id == shipment.reference_id).one()
+                current = current.id
+    """
     org_code_relations = []
-    if shipment.organizations:
-        for org_code in shipment.organizations:
-            query_result = db.query(model_org).filter(model_org.code == org_code).first()
-            if query_result: org_code_relations.append(query_result)
-            else: raise HTTPException(status_code=400, detail="Invalid organization code, organization code: {} is not in the database".format(org_code))
+    for org_code in shipment.organizations:
+        query_result = db.query(model_org).filter(model_org.code == org_code).first()
+        if query_result: org_code_relations.append(query_result)
+        else: raise HTTPException(status_code=400, detail="Invalid organization code, organization code:'{}' is not in the database".format(org_code))
         
-    db_shipment = model_ship(
-        referenceId = shipment.referenceId, 
-        organizations = org_code_relations, 
-        estimatedTimeArrival = shipment.estimatedTimeArrival,# if shipment.estimatedTimeArrival else None, 
-        node_id = current)
-
-    _commit(db, db_shipment)
-    return shipment
-
-
-def remove(self, db: Session, shipment: schema_ship.Shipment):
-    obj = db.query(model_ship).get(shipment.referenceId)
-    db.delete(obj)
-    db.commit()
-
-    obj = db.query(model_node).get(model_node.owner_id == shipment.referenceId)
-    if obj:
-        db.delete(obj)
-        db.commit()
-    return shipment
-
-
-def update_shipment(db: Session, shipment: schema_ship.Shipment):
-    db_shipment = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-    if not db_shipment:
-        raise HTTPException(status_code=400, detail="Cannot update shipment: {} is not in the database".format(shipment.referenceId))
-
-    db_node = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-    for pack in shipment.transportPacks:
-        if 'nodes' in pack:
-            for node in pack[1]:
-                if type(node) is schema_node.Node:
-                    if db_node:
-                        update_node(db, node, shipment.referenceId)
-                    else:
-                        create_shipment_node(db, node, shipment.referenceId)
-                    current = db.query(model_node).filter(model_node.owner_id == shipment.referenceId).first()
-                    current = current.id
-
-    org_code_relations = []
-    if shipment.organizations:
-        for org_code in shipment.organizations:
-            query_result = db.query(model_org).filter(model_org.code == org_code).first()
-            if query_result: org_code_relations.append(query_result)
-            else: raise HTTPException(status_code=400, detail="Invalid organization code, organization code: {} is not in the database".format(org_code))
-        
-    db_shipment.referenceId = shipment.referenceId
-    db_shipment.organizations = org_code_relations
-    db_shipment.estimatedTimeArrival = shipment.estimatedTimeArrival
-    db_shipment.node_id = current
+    db_ship.reference_id = shipment.reference_id
+    db_ship.organizations = org_code_relations
+    db_ship.estimated_time_arrival = shipment.estimated_time_arrival
     db.commit()
     return shipment
 
 
-def _commit(db: Session, obj):
-    db.add(obj)
+def remove( db: Session, shipment: schemas.Shipment):
+    """ Remove shipment and its associated nodes """
+    db_ship = db.query(model_ship).get(shipment.reference_id)
+    db.delete(db_ship)
+
+    db_node = db.query(model_node).get(model_node.shipment_id == shipment.reference_id)
+    db.delete(db_node)
     db.commit()
-    db.refresh(obj)
+    return shipment

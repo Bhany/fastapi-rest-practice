@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Column, Table, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -12,3 +12,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+ship_org = Table('ship_org', Base.metadata,
+    Column('ship_id', ForeignKey('shipment.reference_id'), primary_key=True),
+    Column('org_id', ForeignKey('organization.code'), primary_key=True)
+)
